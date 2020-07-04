@@ -7,36 +7,25 @@ import requests
 import logging
 logger = logging.getLogger(__name__)
 
+try:
+    from ZenBot.views_common import Common
+except Exception as ex:
+    raise ValueError
+
 # https://api-document.foblgate.com/
 API_URL = 'https://api2.foblgate.com'
+# API_URL = 'https://qao-qao-api2.foblgate.com'
 
-class Foblgate(object):
+class Foblgate(Common):
 
     def __init__(self, api_key, api_secret, target, payment):
+        super().__init__(api_key, api_secret, target, payment)
+
         self.id = id
-        self.connect_key = api_key
-        self.secret_key = api_secret
         self.mbid = 'hge4014@naver.com'
-        self.target = target.upper()
-        self.payment = payment.upper()
-        self.targetBalance = 0
-        self.baseBalance = 0
-        self.bids_qty = 0
-        self.bids_price = 0
-        self.asks_qty = 0
-        self.asks_price = 0
-
-        self.bot_conf = None
-        # self.get_config()
-        self.GET_TIME_OUT = 30
-        self.POST_TIME_OUT = 60
-
+        # self.mbid = 'icofrees@gmail.com'
+        # self.mbid = 'zerobizcoin@naver.com'
         self.mid_price = 0 # previous mid_price
-
-    # def __init__(self, id, api_key, api_secret, target, payment):
-    #     super().__init__(id, api_key, api_secret, target, payment)
-        self.nickname = 'foblgate'
-        self.symbol = '%s/%s' %(self.target, self.payment)
 
     def http_request(self, method, path, params=None, headers=None, auth=None):
         url = API_URL + path
@@ -296,7 +285,7 @@ class Foblgate(object):
 
         return status, order_id, content
 
-    def Cancel(self, order_id, side, price):
+    def Cancel(self, order_id, price, side):
         path = '/api/trade/orderCancel'
         request = {
             'mbId': self.mbid,  # user id
@@ -320,7 +309,7 @@ class Foblgate(object):
         request = {
             'mbId': self.mbid,  # user id
             'pairName': self.symbol,
-            'action' : 'ask' if side == 'SELL' or 'ask' else 'bid',
+            'action' : 'ask' if side == 'SELL' or side == 'ask' else 'bid',
             'cnt' : str(cnt),         #Int	Number of result to fetch
             'skipIdx' : str(skipIdx)  #String	Number of skip count
         }
@@ -356,13 +345,13 @@ class Foblgate(object):
 
         return res
 
-    def review_order(self, order_id, _qty, side=None):
+    def review_order(self, order_id, _qty, side):
         units_traded = 0
         resp = None
         find = False
 
         try:
-            side = 'ask' if side == 'SELL' or 'ask' else 'bid'
+            side = 'ask' if side == 'SELL' or side == 'ask' else 'bid'
             resp = self.Order_info(side)
             if 'status' in resp and resp['status'] == '0':
                 if 'data' in resp and resp['data'] :
