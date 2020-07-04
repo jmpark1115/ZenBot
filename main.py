@@ -20,9 +20,6 @@ except :
 
 gui_form = uic.loadUiType('zenBot.ui')[0]
 
-stop_flag = True
-stop1_flag = True
-
 def get_logger():
     logger = logging.getLogger("ZenBot")
     logger.setLevel(logging.DEBUG)
@@ -44,9 +41,16 @@ def get_logger():
 
 logger = get_logger()
 
+
+def print_ps():
+    attrs = vars(ps)
+    _ps = ', '.join("%s: %s" % item for item in attrs.items())
+    logger.debug(_ps)
+    return _ps
+
 class Worker(QThread):
 
-    update_signal = pyqtSignal(dict)
+    update_signal = pyqtSignal(str)
 
     def __init__(self):
         super().__init__()
@@ -55,13 +59,13 @@ class Worker(QThread):
         config = ConfigParser()
         config.read('trading_foblgate.conf')
 
-        connect_key = config.get('ZenBot', 'connect_key')
-        secret_key = config.get('ZenBot', 'secret_key')
+        connect_key = config.get('XenBot', 'connect_key')
+        secret_key = config.get('XenBot', 'secret_key')
 
-        self.target  = config.get('ZenBot', 'target')
-        self.payment = config.get('ZenBot', 'payment')
-        self.dryrun = int(config.get('ZenBot', 'dryrun'))
-        self.tick_interval = float(config.get('ZenBot', 'tick_interval'))
+        self.target  = 'XEN'
+        self.payment = 'KRW'
+        self.dryrun = int(config.get('XenBot', 'dryrun'))
+        self.tick_interval = float(config.get('Param', 'tick_interval'))
 
         if connect_key and secret_key and self.tick_interval and self.target and self.payment:
             logger.debug("configurations ok")
@@ -86,14 +90,12 @@ class Worker(QThread):
     def run(self):
 
         while True:
-            global stop_flag
-            if stop_flag == False:
-               # stop_flag = True
+            if ps.run_flag:
                self.result = {}
                ret = self.bot.self_trading(ps)
                # ret = self.bot.api_test(ps)
                if ret:
-                    self.update_signal.emit(self.result)
+                    self.update_signal.emit(ret)
                # return # one time do
 
             self.msleep(1000)
@@ -164,34 +166,59 @@ class MyWindow(QMainWindow, gui_form):
         # Load Config File
         config = ConfigParser()
         config.read('trading_foblgate.conf')
+        dryrun = int(config.get('XenBot', 'dryrun'))
+        ps.dryrun = True if dryrun else False
+        ps.fr_price = float(config.get('Param', 'fr_price'))
+        ps.to_price = float(config.get('Param', 'to_price'))
+        ps.fr_qty = int(config.get('Param', 'fr_qty'))
+        ps.to_qty = int(config.get('Param', 'to_qty'))
+        ps.fr_time = int(config.get('Param', 'fr_time'))
+        ps.to_time = int(config.get('Param', 'to_time'))
+        ps.fr_off = int(config.get('Param', 'fr_off'))
+        ps.to_off = int(config.get('Param', 'to_off'))
+        ps.mode   = config.get('Param', 'mode')
+        ps.ex_min_qty = int(config.get('Param', 'ex_min_qty'))
+        ps.ex_max_qty = int(config.get('Param', 'ex_max_qty'))
+        ps.tick_interval = float(config.get('Param', 'tick_interval'))
+        ps.run_flag = 0
 
-        self.target = config.get('ZenBot', 'target')
-        if self.target:
-            self.title_Label.setText(self.target)
-        else:
-            self.textBrowser.append('Please add coin name in trading.conf file')
-            raise ValueError
+        logger.debug('parameters setup %s' %ps)
 
+        self.target  = 'XEN'
+        self.payment = 'KRW'
+
+        self.title_Label.setText('XenBot :' + self.target)
         self.MyDialgo()
 
-    @pyqtSlot(dict)
+    @pyqtSlot(str)
     def display_result(self, data):
         logger.debug('===>display_result')
 
         try:
-            message = ''
-            message += data
-
-            self.textBrowser.append(message)
-            self.user_confirm = False
-
+            self.textBrowser.append(data)
         except Exception as ex:
             logger.debug('display_result fail %s' %ex)
 
     def MyDialgo(self):
 
+        self.fr_price_lineEdit.setText('{:.2f}' .format(ps.fr_price))
+        self.to_price_lineEdit.setText('{:.2f}' .format(ps.to_price))
+        self.fr_time_lineEdit.setText(str(ps.fr_time))
+        self.to_time_lineEdit.setText(str(ps.to_time))
+        self.fr_qty_lineEdit.setText(str(ps.fr_qty))
+        self.to_qty_lineEdit.setText(str(ps.to_qty))
+        self.fr_off_lineEdit.setText(str(ps.fr_off))
+        self.to_off_lineEdit.setText(str(ps.to_off))
+        if ps.mode == 'random':
+            self.random_radioButton.setChecked(True)
+        elif ps.mode =='sell':
+            self.sell_radioButton.setChecked(True)
+        else:
+            self.buy_radioButton.setChecked(True)
+
         self.confirm_pushButton.clicked.connect(self.confirm_cmd)
         self.action_pushButton.clicked.connect(self.action_cmd)
+        self.stop_pushButton.clicked.connect(self.stop_cmd)
 
         self.random_radioButton.clicked.connect(self.mode_cmd)
         self.sell_radioButton.clicked.connect(self.mode_cmd)
@@ -200,13 +227,11 @@ class MyWindow(QMainWindow, gui_form):
         self.title_Label.setText("target : {}" .format(self.target))
         self.delete_pushButton.clicked.connect(self.delete_logs_cmd)
 
-        self.stop_pushButton.setCheckable(True)
-        self.stop_pushButton.clicked[bool].connect(self.stopme_cmd)
+        self.textBrowser.append('시스템 OK!')
 
     def confirm_cmd(self):
         logger.debug('confirm cmd')
         self.user_confirm = False
-
 
         fr_price = self.fr_price_lineEdit.text()
         to_price = self.to_price_lineEdit.text()
@@ -219,7 +244,7 @@ class MyWindow(QMainWindow, gui_form):
 
         if fr_price == '' or fr_qty == '' or fr_time == '' :
             print("Type in parameters")
-            self.textBrowser.setText('메시지 : ' + '입력값을 확인해 주세요')
+            self.textBrowser.append( '입력값을 확인해 주세요')
             return "Error"
 
         try:
@@ -233,11 +258,11 @@ class MyWindow(QMainWindow, gui_form):
             to_off = float(to_off) if to_off else 90
 
         except Exception as ex:
-            self.textBrowser.setText('입력값을 확인해 주세요')
+            self.textBrowser.append('입력값을 확인해 주세요')
             return "Error"
 
         if fr_price <= 0 or fr_qty <= 0 or fr_time <= 0 or fr_off <= 0:
-            self.textBrowser.setText('입력값을 확인해 주세요')
+            self.textBrowser.append('입력값을 확인해 주세요')
             return "Error"
 
         if self.sell_radioButton.isChecked():
@@ -250,64 +275,54 @@ class MyWindow(QMainWindow, gui_form):
             mode = 'random'
         else:
             mode = ''
-            self.textBrowser.setText('Mode를 선택해 주세요')
+            self.textBrowser.append('Mode를 선택해 주세요')
             return "Error"
 
-        ps.fr_price = fr_price = 0.60
-        ps.to_price = to_price = 0.70
-        ps.fr_qty = fr_qty = 1000
-        ps.to_qty = to_qty = 1010
-        ps.fr_time = fr_time = 1
-        ps.to_time = to_time = 10
-        ps.fr_off = fr_off   = 10
-        ps.to_off = to_off   = 90
-        ps.mode   = mode     = 'random'
-        ps.tick_interval = 0.01 #???
-        # self.worker.set_run(ps)
-        self.textBrowser.append("메시지 : " + "파라메타 설정 완료")
+        ps.fr_price = fr_price
+        ps.to_price = to_price
+        ps.fr_qty = fr_qty
+        ps.to_qty = to_qty
+        ps.fr_time = fr_time
+        ps.to_time = to_time
+        ps.fr_off = fr_off
+        ps.to_off = to_off
+        ps.mode   = mode
+        ret = print_ps()
+        self.textBrowser.append( "파라메타 설정 완료")
+        self.textBrowser.append(ret)
+
+        self.user_confirm = True  #입력 ok
         return
 
     # https://stackoverflow.com/questions/18925241/send-additional-variable-during-pyqt-pushbutton-click
-    def stopme_cmd(self, state):
-        global stop1_flag
-
-        source = self.sender()
-        if state:
-            print('계속 -> 정지')
-            source.setText('PLAY')
-            #     정지 동작
-            result = '계속 -> 정지'
-            stop1_flag = True
-        else:
-            print('정지 -> 계속')
-            source.setText('STOP')
-            # 계속 동작
-            result = '정지 -> 계속'
-            stop1_flag = False
-
-        self.textBrowser.setText('메시지 : ' + str(result))
-
-    def action_cmd(self):
+    def action_cmd(self, state):
         logger.debug('action cmd')
+
         # check deadline
         check = isDeadline()
         if check == 'NG':
-            self.textBrowser.setText('사용기간이 만료되었습니다')
+            self.textBrowser.append('사용기간이 만료되었습니다')
             return "Error"
         elif check == 'ERROR':
-            self.textBrowser.setText('네트워크를 점검해 주세요')
+            self.textBrowser.append('네트워크를 점검해 주세요')
             return "Error"
         else:
-            self.textBrowser.setText('Bot Validation OK')
+            self.textBrowser.append('Bot Validation OK')
         # end check deadline
 
-        # confirm for user input
-        self.user_confirm = True
+        if not self.user_confirm:  # 입력 ok ?
+            self.textBrowser.append( '입력값을 확인해 주세요')
+            return
 
-        self.textBrowser.append("do action")
-        global stop_flag
-        print('stop flag ' , stop_flag)
-        stop_flag = False
+        ps.run_flag = 1
+        self.textBrowser.append( '실행합니다')
+
+    def stop_cmd(self):
+        logger.debug('stop_cmd')
+
+        ps.run_flag = 0
+        self.textBrowser.append( '정지합니다')
+        return
 
     def refresh_cmd(self):
         askprice, bidprice, askqty, bidqty = self.worker.seek_orderbook(self.target)

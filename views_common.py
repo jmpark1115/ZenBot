@@ -200,6 +200,7 @@ class Common(object):
     def self_trading(self, bot_conf):
 
         logger.debug('-- self_trading with {} {}' .format(self.nickname, self.symbol))
+        msg = ''
         if bot_conf.to_time and bot_conf.fr_time < bot_conf.to_time:
             mother = random.randrange(bot_conf.fr_time, bot_conf.to_time)
         else:
@@ -222,14 +223,21 @@ class Common(object):
         if result == False:
             logger.debug('Orderbook Error at {}' .format(self.nickname, self.symbol))
             return
-        logger.debug("ASKS {:5.0f}@{:.8f} at {} {}".format(self.asks_qty, self.asks_price, self.nickname, self.symbol))
-        logger.debug("BIDS {:5.0f}@{:.8f} at {} {}".format(self.bids_qty, self.bids_price, self.nickname, self.symbol))
+
+        text = "ASKS {:5.0f}@{:.8f} at {} {}\n".format(self.asks_qty, self.asks_price, self.nickname, self.symbol)
+        msg += text
+        logger.debug(text)
+        text = "BIDS {:5.0f}@{:.8f} at {} {}\n".format(self.bids_qty, self.bids_price, self.nickname, self.symbol)
+        msg += text
+        logger.debug(text)
 
 
         qty, price = self.seek_trading_info(self.asks_qty, self.asks_price,
                                             self.bids_qty, self.bids_price, bot_conf)
 
         if qty <= 0 or price <= 0:
+            text = 'This is not trading situation. {} {}\n'.format(self.nickname, self.symbol)
+            msg += text
             logger.debug('This is not trading situation {} {}' .format(self.nickname, self.symbol))
             return
 
@@ -260,7 +268,9 @@ class Common(object):
                 time.sleep(0.01)
                 #
                 status, units_traded, avg_price, fee = self.review_order(order_id, qty, 'SELL')
-                logger.debug('SEL status : {} units_traded : {}/{} at {} {} with {}'.format(status, units_traded, qty, self.nickname, self.symbol, order_id))
+                text = 'SEL status : {} units_traded : {}/{} at {} {} with {}\n' .format(status, units_traded, qty, self.nickname, self.symbol, order_id)
+                msg += text
+                logger.debug(text)
                 args = ''
 
                 try:
@@ -283,7 +293,9 @@ class Common(object):
                     if bot_conf.ex_min_qty > qty:
                         # first.mark = True
                         # first.save()
-                        logger.debug('qty {} is lower than min_qty {}'.format(qty, bot_conf.ex_min_qty))
+                        text = 'qty {} is lower than min_qty {}'.format(qty, bot_conf.ex_min_qty)
+                        msg+= text
+                        logger.debug(text)
                         self.Cancel(order_id)
                         return
                     else:
@@ -308,7 +320,10 @@ class Common(object):
 
                 time.sleep(1)
                 status, units_traded, avg_price, fee = self.review_order(order_id, qty, 'BUY')
-                logger.debug('BUY status : {} units_traded : {}/{} at {} {} with {}'.format(status, units_traded, qty, self.nickname, self.symbol, order_id))
+                text = 'BUY status : {} units_traded : {}/{} at {} {} with {}\n'.format(status, units_traded, qty, self.nickname,
+                                                                               self.symbol, order_id)
+                msg += text
+                logger.debug(text)
                 args = ''
 
                 try:
@@ -360,7 +375,9 @@ class Common(object):
                 time.sleep(0.1)
                 #
                 status, units_traded, avg_price, fee = self.review_order(order_id, qty, 'BUY')
-                logger.debug('BUY status : {} units_traded : {}/{} at {} with {}'.format(status, units_traded, qty, self.nickname, self.symbol, order_id))
+                text = 'BUY status : {} units_traded : {}/{} at {} with {}\n'.format(status, units_traded, qty, self.nickname, self.symbol, order_id)
+                msg += text
+                logger.debug(text)
                 try:
                     pass
                     # args = (bot_conf.user.username, bot_conf.name, bot_conf.exchanger, 'buy',
@@ -408,7 +425,11 @@ class Common(object):
 
                 time.sleep(1)
                 status, units_traded, avg_price, fee = self.review_order(order_id, qty, 'SELL')
-                logger.debug('SEL status : {} units_traded : {}/{} at {} {} with {}'.format(status, units_traded, qty, self.nickname, self.symbol, order_id))
+                text = 'SEL status : {} units_traded : {}/{} at {} {} with {}\n'.format(status, units_traded, qty, self.nickname,
+                                                                               self.symbol, order_id)
+                msg += text
+                logger.debug(text)
+
                 try:
                     pass
                     # args = (bot_conf.user.username, bot_conf.name, bot_conf.exchanger, 'sell',
@@ -445,6 +466,7 @@ class Common(object):
 
         logger.debug('<-- Trading End {} {} elapsed time {:.2f}\n' .format(self.nickname, self.symbol, time.time()-start))
         # self.Balance()
+        return msg
 
     def DB_WRITE(self, args):
         return 'OK'

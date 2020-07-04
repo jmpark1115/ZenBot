@@ -11,11 +11,12 @@ class Params(object):
         self.fr_off = 0
         self.to_off = 0
         self.mode = None
-        self.dryrun = True
+        self.dryrun = False
         self.ex_min_qty = 0
-        self.ex_max_qty = 10000
+        self.ex_max_qty = 0
         self.mid_price = 0
         self.tick_interval = 0
+        self.run_flag = 0
 
     '''
     # https://dojang.io/mod/page/view.php?id=2476
