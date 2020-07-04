@@ -13,12 +13,15 @@ import random
 
 from deadline import isDeadline
 from foblgate import Foblgate
-
-from concurrent.futures import ThreadPoolExecutor, as_completed
+try:
+    from config import ps
+except :
+    raise ValueError
 
 gui_form = uic.loadUiType('zenBot.ui')[0]
 
 stop_flag = True
+stop1_flag = True
 
 def get_logger():
     logger = logging.getLogger("ZenBot")
@@ -40,33 +43,6 @@ def get_logger():
     return logger
 
 logger = get_logger()
-
-class Params(object):
-
-    def __init__(self):
-        self.fr_qty = 0
-        self.to_qty = 0
-        self.fr_price = 0
-        self.to_price = 0
-        self.fr_time = 0
-        self.to_time = 0
-        self.fr_off  = 0
-        self.to_off  = 0
-        self.mode    = None
-
-    '''
-    # https://dojang.io/mod/page/view.php?id=2476
-    @property
-    def fr_qty(self):
-        return self.fr_qty
-    
-    @fr_qty.setter
-    def fr_qty(self, value):
-        self.fr_qty = value
-    '''
-
-
-ps = Params()
 
 class Worker(QThread):
 
@@ -95,12 +71,9 @@ class Worker(QThread):
 
         self.bot = Foblgate(connect_key, secret_key, self.target, self.payment)
 
-        self.executor = ThreadPoolExecutor(max_workers=1)
         self.result = {}
 
         self.runtime = 0  # 실행 시간 측정
-        self.success = 0  # 성공률
-
         self.qty  = 0
 
 
@@ -111,65 +84,20 @@ class Worker(QThread):
         self.mode = mode
 
     def run(self):
+
         while True:
             global stop_flag
             if stop_flag == False:
-               stop_flag = True
+               # stop_flag = True
                self.result = {}
-               ret = self.create_thread(self.tot_run)
+               ret = self.bot.self_trading(ps)
+               # ret = self.bot.api_test(ps)
                if ret:
                     self.update_signal.emit(self.result)
+               # return # one time do
+
             self.msleep(1000)
 
-    def create_thread(self, tot_run):
-        logger.debug('create_thread tot {}' .format(tot_run))
-
-        self.runtime = 0
-        t1 = timeit.default_timer()
-
-        try:
-            mok = tot_run // self.per_run
-            nam = tot_run % self.per_run
-            r= 0
-            self.result = {}
-            for j in range(1, mok+1):
-                start = r
-                end = r + self.per_run
-                self.run_thread(start=r, end=end)
-                if r >= tot_run:
-                    break
-                r += self.per_run
-            if r <= tot_run:
-                self.run_thread(start=r, end=r+nam)
-
-            self.runtime = timeit.default_timer() - t1
-            logger.debug("{} Runtime Process".format(self.runtime))
-            self.user_confirm = False
-            return True
-
-        except Exception as ex:
-            logger.debug('create_thread fail %s' %ex)
-            self.runtime = 0
-            self.user_confirm = False
-            return False
-
-
-    def run_thread(self, start, end):
-        logger.debug("run thread {} ~ {}" .format(start, end))
-
-        if self.dryrun:
-            futures = {self.executor.submit(self.seek_balance, i): i for i in range(start, end)}
-        else:
-            futures = {self.executor.submit(self.zero_trade, i): i for i in range(start, end)}
-
-        for future in as_completed(futures):
-            try:
-                data = future.result()
-                # print(data)
-            except Exception as ex:
-                self.result[future] = (0, 'fail')
-            else:
-                self.result[future] = data
 
     def seek_balance(self, number):
         logger.debug('->execute function executing {}'.format(number))
@@ -177,61 +105,6 @@ class Worker(QThread):
         logger.debug('<-execute function ended with: {}'.format(number))
         return (result, 'ok')
 
-    def sellnbuy(self, number):
-        logger.debug('execute function executing')
-        try:
-            time.sleep(0.01)
-            result = 0
-            status, orderNumber, response = self.bot.sell(self.coin, self.qty, self.price)
-            m = 'No.{} sell {}, orderNumber {}, result {}\n' .format(number, status, orderNumber, response)
-            if status == 'OK':
-                result += 1
-            time.sleep(0.01)
-            logger.debug('execute function ended with: {}'.format(number))
-            return (result, m)
-
-        except Exception as ex:
-            logger.debug("sell n buy error %s" %ex)
-
-    def buynsell(self, number):
-        logger.debug('execute function executing')
-        try:
-            time.sleep(0.01)
-            result = 0
-            status, orderNumber, response = self.bot.buy(self.coin, self.qty, self.price)
-            m = 'No.{} buy  {}, orderNumber {}, result {}\n'.format(number, status, orderNumber, response)
-            if status == 'OK':
-                result += 1
-            time.sleep(0.01)
-            logger.debug('execute function ended with: {}'.format(number))
-            return (result, m)
-
-        except Exception as ex:
-            logger.debug("buy n sell error %s" %ex)
-
-
-    def zero_trade(self, number):
-        # logger.debug("->execute start %d" %number)
-        try:
-            mod = number % 2
-
-            if mod == 0 : # even
-                if self.mode == 'sell':
-                    ret = self.sellnbuy(number)
-                else:
-                    ret = self.buynsell(number)
-                return ret
-            else:
-                if self.mode == 'sell':
-                    ret = self.buynsell(number)
-                else:
-                    ret = self.sellnbuy(number)
-                return ret
-            # logger.debug("<-execute end %d" % number)
-
-        except Exception as ex:
-            logger.debug("sell n buy error %s" %ex)
-            return ('fail', 'fail')
 
     def seek_orderbook(self, coin):
         try:
@@ -270,7 +143,6 @@ class Worker(QThread):
             return "Wait"
         else:
             return mid_price
-
 
 class MyWindow(QMainWindow, gui_form):
 
@@ -328,9 +200,13 @@ class MyWindow(QMainWindow, gui_form):
         self.title_Label.setText("target : {}" .format(self.target))
         self.delete_pushButton.clicked.connect(self.delete_logs_cmd)
 
+        self.stop_pushButton.setCheckable(True)
+        self.stop_pushButton.clicked[bool].connect(self.stopme_cmd)
+
     def confirm_cmd(self):
         logger.debug('confirm cmd')
         self.user_confirm = False
+
 
         fr_price = self.fr_price_lineEdit.text()
         to_price = self.to_price_lineEdit.text()
@@ -377,18 +253,39 @@ class MyWindow(QMainWindow, gui_form):
             self.textBrowser.setText('Mode를 선택해 주세요')
             return "Error"
 
-        ps.fr_price = fr_price
-        ps.to_price = to_price
-        ps.fr_qty = fr_qty
-        ps.to_qty = to_qty
-        ps.fr_time = fr_time
-        ps.to_time = to_time
-        ps.fr_off = fr_off
-        ps.to_off = to_off
-        ps.mode   = mode
+        ps.fr_price = fr_price = 0.60
+        ps.to_price = to_price = 0.70
+        ps.fr_qty = fr_qty = 1000
+        ps.to_qty = to_qty = 1010
+        ps.fr_time = fr_time = 1
+        ps.to_time = to_time = 10
+        ps.fr_off = fr_off   = 10
+        ps.to_off = to_off   = 90
+        ps.mode   = mode     = 'random'
+        ps.tick_interval = 0.01 #???
         # self.worker.set_run(ps)
         self.textBrowser.append("메시지 : " + "파라메타 설정 완료")
         return
+
+    # https://stackoverflow.com/questions/18925241/send-additional-variable-during-pyqt-pushbutton-click
+    def stopme_cmd(self, state):
+        global stop1_flag
+
+        source = self.sender()
+        if state:
+            print('계속 -> 정지')
+            source.setText('PLAY')
+            #     정지 동작
+            result = '계속 -> 정지'
+            stop1_flag = True
+        else:
+            print('정지 -> 계속')
+            source.setText('STOP')
+            # 계속 동작
+            result = '정지 -> 계속'
+            stop1_flag = False
+
+        self.textBrowser.setText('메시지 : ' + str(result))
 
     def action_cmd(self):
         logger.debug('action cmd')
