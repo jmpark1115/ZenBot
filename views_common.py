@@ -135,8 +135,6 @@ class Common(object):
                 logger.debug('Trade lower in {} target: {} payment: {}'.format(self.nickname, self.targetBalance, self.baseBalance))
                 return 0, 0
 
-        if bot_conf.ex_max_qty:
-            TradeSize = min(TradeSize, bot_conf.ex_max_qty)
         if bot_conf.ex_min_qty:
             if TradeSize < bot_conf.ex_min_qty:
                 TradeSize = 0
@@ -249,8 +247,9 @@ class Common(object):
         else:
             mode = bot_conf.mode
 
-        logger.debug(
-            '{}@{}-{}/{} at {}{}'.format(qty, price, mode, bot_conf.mode, self.nickname, self.symbol))
+        text = '{}@{}-{}/{} at {}{}\n'.format(qty, price, mode, bot_conf.mode, self.nickname, self.symbol)
+        msg += text
+        logger.debug(text)
 
         prev_order_id = 0
 

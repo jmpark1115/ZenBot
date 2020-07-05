@@ -6,10 +6,7 @@ from PyQt5.QtCore import *
 import sys
 from configparser import ConfigParser
 import logging
-import timeit
 import math
-import time
-import random
 
 from deadline import isDeadline
 from foblgate import Foblgate
@@ -101,11 +98,13 @@ class Worker(QThread):
             self.msleep(1000)
 
 
-    def seek_balance(self, number):
-        logger.debug('->execute function executing {}'.format(number))
-        result = self.bot.balance('ETH')
-        logger.debug('<-execute function ended with: {}'.format(number))
-        return (result, 'ok')
+    def seek_balance(self):
+        try:
+            self.bot.Balance()
+            return self.bot.targetBalance, self.bot.baseBalance
+        except Exception as ex:
+            logger.debug("seek balance error %s" %ex)
+            return 0, 0
 
 
     def seek_orderbook(self, coin):
@@ -178,7 +177,6 @@ class MyWindow(QMainWindow, gui_form):
         ps.to_off = int(config.get('Param', 'to_off'))
         ps.mode   = config.get('Param', 'mode')
         ps.ex_min_qty = int(config.get('Param', 'ex_min_qty'))
-        ps.ex_max_qty = int(config.get('Param', 'ex_max_qty'))
         ps.tick_interval = float(config.get('Param', 'tick_interval'))
         ps.run_flag = 0
 
@@ -187,7 +185,7 @@ class MyWindow(QMainWindow, gui_form):
         self.target  = 'XEN'
         self.payment = 'KRW'
 
-        self.title_Label.setText('XenBot :' + self.target)
+        self.title_Label.setText('XEN Bot')
         self.MyDialgo()
 
     @pyqtSlot(str)
@@ -224,7 +222,7 @@ class MyWindow(QMainWindow, gui_form):
         self.sell_radioButton.clicked.connect(self.mode_cmd)
         self.buy_radioButton.clicked.connect(self.mode_cmd)
 
-        self.title_Label.setText("target : {}" .format(self.target))
+        self.title_Label.setText("XEN Bot")
         self.delete_pushButton.clicked.connect(self.delete_logs_cmd)
 
         self.textBrowser.append('시스템 OK!')
@@ -242,7 +240,7 @@ class MyWindow(QMainWindow, gui_form):
         fr_off   = self.fr_off_lineEdit.text()
         to_off   = self.to_off_lineEdit.text()
 
-        if fr_price == '' or fr_qty == '' or fr_time == '' :
+        if fr_price == '' or fr_qty == '' or fr_time == '' or fr_off == '':
             print("Type in parameters")
             self.textBrowser.append( '입력값을 확인해 주세요')
             return "Error"
@@ -261,7 +259,27 @@ class MyWindow(QMainWindow, gui_form):
             self.textBrowser.append('입력값을 확인해 주세요')
             return "Error"
 
-        if fr_price <= 0 or fr_qty <= 0 or fr_time <= 0 or fr_off <= 0:
+        if fr_price <= 0 or fr_qty <= 0 or fr_time <= 0 or fr_off < 0:
+            self.textBrowser.append('입력값을 확인해 주세요')
+            return "Error"
+
+        if to_price > 0 and fr_price >= to_price:
+            self.textBrowser.append('입력값을 확인해 주세요')
+            return "Error"
+
+        if to_qty > 0 and fr_qty >= to_qty:
+            self.textBrowser.append('입력값을 확인해 주세요')
+            return "Error"
+
+        if to_time > 0 and fr_time >= to_time:
+            self.textBrowser.append('입력값을 확인해 주세요')
+            return "Error"
+
+        if to_off > 0 and fr_off >= to_off:
+            self.textBrowser.append('입력값을 확인해 주세요')
+            return "Error"
+
+        if to_off > 100:
             self.textBrowser.append('입력값을 확인해 주세요')
             return "Error"
 
@@ -292,6 +310,15 @@ class MyWindow(QMainWindow, gui_form):
         self.textBrowser.append(ret)
 
         self.user_confirm = True  #입력 ok
+
+        self.worker.bot.Orderbook()
+        self.bestoffer_Label.setText("Ask {:5.0f}@{:.2f}\nBid {:5.0f}@{:.2f}"
+                                     .format(self.worker.bot.asks_qty, self.worker.bot.asks_price
+                                             ,self.worker.bot.bids_qty, self.worker.bot.bids_price))
+        self.worker.bot.Balance()
+        self.balance_Label.setText("{:.0f} {}\n{:.0f} {}"
+                    .format(self.worker.bot.targetBalance, self.target,
+                            self.worker.bot.baseBalance, self.payment))
         return
 
     # https://stackoverflow.com/questions/18925241/send-additional-variable-during-pyqt-pushbutton-click
@@ -316,6 +343,7 @@ class MyWindow(QMainWindow, gui_form):
 
         ps.run_flag = 1
         self.textBrowser.append( '실행합니다')
+        return
 
     def stop_cmd(self):
         logger.debug('stop_cmd')
@@ -323,15 +351,6 @@ class MyWindow(QMainWindow, gui_form):
         ps.run_flag = 0
         self.textBrowser.append( '정지합니다')
         return
-
-    def refresh_cmd(self):
-        askprice, bidprice, askqty, bidqty = self.worker.seek_orderbook(self.target)
-        ticker = self.worker.seek_ticker(self.target)
-        self.last_lineEdit.setText("{:.4f}".format(ticker))
-        self.ask_lineEdit.setText("{:5.0f}@{:.4f}".format(askqty, askprice))
-        self.bid_lineEdit.setText("{:5.0f}@{:.4f}".format(bidqty, bidprice))
-        self.textBrowser.append("ASKS {:5.0f}@{:.4f}".format(askqty, askprice))
-        self.textBrowser.append("BIDS {:5.0f}@{:.4f}".format(bidqty, bidprice))
 
     def mode_cmd(self):
         if self.sell_radioButton.isChecked():
