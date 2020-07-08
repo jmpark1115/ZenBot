@@ -326,6 +326,7 @@ class MyWindow(QMainWindow, gui_form):
         logger.debug('action cmd')
 
         # check deadline
+        '''
         check = isDeadline()
         if check == 'NG':
             self.textBrowser.append('사용기간이 만료되었습니다')
@@ -335,6 +336,7 @@ class MyWindow(QMainWindow, gui_form):
             return "Error"
         else:
             self.textBrowser.append('Bot Validation OK')
+        '''
         # end check deadline
 
         if not self.user_confirm:  # 입력 ok ?
