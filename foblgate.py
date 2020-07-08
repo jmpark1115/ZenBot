@@ -300,7 +300,7 @@ class Common(object):
                         text = 'qty {} is lower than min_qty {}'.format(qty, bot_conf.ex_min_qty)
                         msg+= text
                         logger.debug(text)
-                        self.Cancel(order_id)
+                        self.Cancel(order_id, qty, 'SELL')
                         return
                     else:
                         prev_order_id = order_id
