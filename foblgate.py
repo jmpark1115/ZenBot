@@ -154,7 +154,7 @@ class Common(object):
               + str(time.localtime().tm_sec))
 
     # def order_update(self, order_id, tran):
-    def order_update(self, order_id, qty, side):
+    def order_update(self, order_id, price, qty, side):
 
         # first try update
         logger.debug('order_update order_id : {}' .format(order_id))
@@ -165,7 +165,7 @@ class Common(object):
             status, units_traded, avg_price, fee = self.review_order(order_id, qty, side)
             if units_traded != qty:
                 # tran.mark = True
-                self.Cancel(order_id)
+                self.Cancel(order_id, price, side)
             # tran.avg_price   = avg_price
             # tran.fee         = fee
             # tran.save()
@@ -283,7 +283,8 @@ class Common(object):
                     #         units_traded, qty, avg_price, price, fee, bot_conf.mode, status, self.targetBalance,
                     #         self.baseBalance, order_id, 1, False, self.bids_price, self.asks_price)
                     # first = self.DB_WRITE(args)
-                    first_qty  = qty
+                    first_price  = price
+                    first_qty    = qty
                     first_side = 'SELL'
                 except Exception as ex:
                     logger.error("db exception %s / %s" %(ex, args))
@@ -300,7 +301,7 @@ class Common(object):
                         text = 'qty {} is lower than min_qty {}'.format(qty, bot_conf.ex_min_qty)
                         msg+= text
                         logger.debug(text)
-                        self.Cancel(order_id, qty, 'SELL')
+                        self.Cancel(order_id, price, 'SELL')
                         return
                     else:
                         prev_order_id = order_id
@@ -313,13 +314,13 @@ class Common(object):
                         logger.debug('fail to buy %s' % content)
                         # first.mark = True
                         # first.save()
-                        self.Cancel(prev_order_id, first_qty, first_side)
+                        self.Cancel(prev_order_id, first_price, first_side)
                         return
                 except Exception as ex:
                     logger.error('fail to order %s' %ex)
                     # first.mark = True
                     # first.save()
-                    self.Cancel(prev_order_id, first_qty, first_side)
+                    self.Cancel(prev_order_id, first_price, first_side)
                     return
 
                 time.sleep(1)
@@ -341,24 +342,24 @@ class Common(object):
                     return
 
                 if status == "SKIP":  # filled, normal process
-                    self.order_update(prev_order_id, first_qty, first_side)
+                    self.order_update(prev_order_id, first_price, first_qty, first_side)
                     self.save_mid_price(price, bot_conf)
                     pass
                 elif status == "NG":  # partially filled
                     # second.mark = True
                     # second.save()
-                    self.order_update(prev_order_id, first_qty, first_side)
+                    self.order_update(prev_order_id, first_price, first_qty, first_side)
                     qty -= units_traded
                     logger.debug('partially filled, cancel pending order {}'.format(qty))
-                    self.Cancel(order_id, qty, 'BUY')
+                    self.Cancel(order_id, price, 'BUY')
                     self.save_mid_price(price, bot_conf)
                     return
                 else: # GO
                     logger.debug('unfilled, cancel pending order')
                     # second.mark = True
                     # second.save()
-                    self.order_update(prev_order_id, first_qty, first_side)
-                    self.Cancel(order_id, qty, 'BUY')
+                    self.order_update(prev_order_id, first_price, first_qty, first_side)
+                    self.Cancel(order_id, price, 'BUY')
                     self.save_mid_price(price, bot_conf)
                     return
             else:
@@ -388,7 +389,8 @@ class Common(object):
                     #         units_traded, qty, avg_price, price, fee, bot_conf.mode, status, self.targetBalance,
                     #         self.baseBalance, order_id, 1, False, self.bids_price, self.asks_price)
                     # first = self.DB_WRITE(args)
-                    first_qty  = qty
+                    first_price  = price
+                    first_qty    = qty
                     first_side = 'BUY'
                 except Exception as ex:
                     logger.error("db exception %s / %s" %(ex, args))
@@ -404,7 +406,7 @@ class Common(object):
                         # first.mark = True
                         # first.save()
                         logger.debug('qty {} is lower than min_qty {}'.format(qty, bot_conf.ex_min_qty))
-                        self.Cancel(order_id, qty, 'BUY')
+                        self.Cancel(order_id, price, 'BUY')
                         return
                     else:
                         prev_order_id = order_id
@@ -418,13 +420,13 @@ class Common(object):
                         logger.debug('fail to sell %s' % content)
                         # first.mark = True
                         # first.save()
-                        self.Cancel(prev_order_id, first_qty , first_side)
+                        self.Cancel(prev_order_id, first_price , first_side)
                         return
                 except Exception as ex:
                     logger.error('fail to order %s' % content)
                     # first.mark = True
                     # first.save()
-                    self.Cancel(prev_order_id, first_qty , first_side)
+                    self.Cancel(prev_order_id, first_price , first_side)
                     return
 
                 time.sleep(1)
@@ -445,24 +447,24 @@ class Common(object):
                     return
 
                 if status == "SKIP":  # filled
-                    self.order_update(prev_order_id, first_qty, first_side)
+                    self.order_update(prev_order_id, first_price, first_qty, first_side)
                     self.save_mid_price(price, bot_conf)
                     pass
                 elif status == "NG":  # partially filled
                     # second.mark = True
                     # second.save()
-                    self.order_update(prev_order_id, first_qty, first_side)
+                    self.order_update(prev_order_id, first_price, first_qty, first_side)
                     qty -= units_traded
                     logger.debug('partially filled, cancel pending order {}'.format(qty))
-                    self.Cancel(order_id, first_qty, first_side)
+                    self.Cancel(order_id, first_price, first_side)
                     self.save_mid_price(price, bot_conf)
                     return
                 else: # GO
                     logger.debug('unfilled, cancel pending order')
                     # second.mark = True
                     # second.save()
-                    self.order_update(prev_order_id, first_qty, first_side)
-                    self.Cancel(order_id, first_qty, first_side)
+                    self.order_update(prev_order_id, first_price, first_qty, first_side)
+                    self.Cancel(order_id, first_price, first_side)
                     self.save_mid_price(price, bot_conf)
                     return
         else:
@@ -482,8 +484,7 @@ class Foblgate(Common):
 
         self.id = id
         self.mbid = 'hge4014@naver.com'
-        # self.mbid = 'icofrees@gmail.com'
-        # self.mbid = 'zerobizcoin@naver.com'
+        # self.mbid = 'gkdnakcl@gmail.com'
         self.mid_price = 0 # previous mid_price
 
     def http_request(self, method, path, params=None, headers=None, auth=None):
@@ -750,7 +751,7 @@ class Foblgate(Common):
             'mbId': self.mbid,  # user id
             'pairName': self.symbol,
             'ordNo': order_id,
-            'action' : 'ask' if side == 'SELL' or 'ask' else 'bid',
+            'action' : 'ask' if side == 'SELL' or side == 'ask' else 'bid',
             'ordPrice' : '%g' %price,
         }
         sign = self._produce_sign(request)
