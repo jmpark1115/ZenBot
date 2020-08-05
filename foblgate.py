@@ -75,7 +75,8 @@ class Common(object):
         while True:
             sum = float(D(bid) + D(i) * D(tick_interval))
             if bid < sum < ask:
-                result = math.floor(sum * tick_floor) / tick_floor
+                # result = math.floor(sum * tick_floor) / tick_floor
+                result = float(D(math.floor(D(sum) * D(tick_floor))) / D(tick_floor))
                 if result != bid:
                     sp.append(result)
                 i += 1
