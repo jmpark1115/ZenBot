@@ -43,6 +43,8 @@ class Common(object):
         self.nickname = 'foblgate'
         self.symbol = '%s/%s' %(self.target, self.payment)
 
+        self.old_balance = 0
+
     def get_config(self):
         logger.debug('get_config')
         try:
@@ -158,7 +160,7 @@ class Common(object):
         try:
             status, units_traded, avg_price, fee = self.review_order(order_id, qty, side)
             if units_traded != qty:
-                self.Cancel(order_id, price, qty, side)
+                self.Cancel(order_id, price, side)
         except Exception as ex:
             logger.debug('order_update exception %s' %ex)
 
@@ -190,6 +192,30 @@ class Common(object):
         print('SEL status : {} units_traded : {}/{} at {} {}'
               .format(status, units_traded, qty, self.nickname,self.symbol))
 
+    def check_balance(self):
+        from datetime import datetime, timedelta
+
+        logger.debug('check balance %s' %self.nickname)
+        try:
+            # time check
+            now = datetime.now()
+            if self.old_balance:
+                if now < self.old_balance + timedelta(seconds=60*5): # 5 min
+                    return False
+            self.old_balance = now
+            #
+            ret = self.Balance()
+            if not ret:
+                logger.debug('check balance error %s_%s' %(ret, self.nickname))
+                return False
+            if self.baseBalance <= 0 and self.targetBalance <= 0:
+                logger.debug('check balance value error %s' %(self.nickname))
+                return True
+        except Exception as ex:
+            logger.debug('check balance exeception %s_%s' %(self.nickname, ex))
+
+        return
+
     def self_trading(self, bot_conf):
 
         logger.debug('-- self_trading with {} {}' .format(self.nickname, self.symbol))
@@ -197,9 +223,7 @@ class Common(object):
         if bot_conf.to_time and bot_conf.fr_time < bot_conf.to_time:
             mother = random.randrange(bot_conf.fr_time, bot_conf.to_time)
         else:
-            mother = bot_conf.fr_time
-            if mother < 10:
-                mother = 10
+            mother = (5 if self.bot_conf.fr_time < 5 else self.bot_conf.fr_time)
 
         logger.debug('{} {} Time {}'.format(self.nickname, self.symbol, mother))
         time.sleep(mother)
@@ -207,7 +231,7 @@ class Common(object):
         self.mid_price = bot_conf.mid_price #self.get_mid_price()
         logger.debug('previous mid price {}' .format(self.mid_price))
 
-        self.Balance()
+        self.check_balance()
         before_m = 'Before: target {} - base {}'.format(self.targetBalance, self.baseBalance)
 
         start = time.time()
@@ -289,7 +313,7 @@ class Common(object):
                 elif status == 'GO':  # GO, unfilled
                     prev_order_id = order_id
                 else: #False
-                    self.bot.Cancel(order_id, price, 'SELL')
+                    self.Cancel(order_id, price, 'SELL')
                     return
                 #
                 try:
@@ -347,7 +371,7 @@ class Common(object):
                 time.sleep(0.01)
                 #
                 status, units_traded, avg_price, fee = self.review_order(order_id, qty, 'BUY')
-                text = 'BUY status : {} units_traded : {}/{} at {} with {}\n'.format(status, units_traded, qty, self.nickname, self.symbol, order_id)
+                text = 'BUY status : {} units_traded : {}/{} at {} {} with {}\n'.format(status, units_traded, qty, self.nickname, self.symbol, order_id)
                 msg += text
                 logger.debug(text)
 
@@ -370,7 +394,7 @@ class Common(object):
                     prev_order_id = order_id
                     pass
                 else:
-                    self.bot.Cancel(order_id, price, 'BUY')
+                    self.Cancel(order_id, price, 'BUY')
                     return
                 #
                 try:
