@@ -7,6 +7,7 @@ import sys
 from configparser import ConfigParser
 import logging
 import math
+import time
 
 from deadline import isDeadline
 from foblgate import Foblgate
@@ -15,10 +16,26 @@ try:
 except :
     raise ValueError
 
-gui_form = uic.loadUiType('zenBot.ui')[0]
+TARGET  = 'XEN'
+PAYMENT = 'KRW'
+BOTNAME = TARGET + '_Bot'
+GUI_FILE = 'zenBot.ui'
+CONF_FILE = 'trading_duru.conf'
+# CONF_FILE = 'trading_foblgate.conf'
+
+gui_form = uic.loadUiType(GUI_FILE)[0]
+
+def logging_time(func):
+    def logged(*args, **kwargs):
+        logger.debug(f'-->{func.__name__}')
+        start_time = time.time()
+        func(*args, **kwargs)
+        elapsed_time = time.time() - start_time
+        logger.debug(f"<--{func.__name__} time elapsed: {elapsed_time: .5f}")
+    return logged
 
 def get_logger():
-    logger = logging.getLogger("ZenBot")
+    logger = logging.getLogger(BOTNAME)
     logger.setLevel(logging.DEBUG)
 
     ch = logging.StreamHandler()
@@ -54,27 +71,26 @@ class Worker(QThread):
 
         # Load Config File
         config = ConfigParser()
-        config.read('trading_foblgate.conf')
+        config.read(CONF_FILE)
 
-        connect_key = config.get('XenBot', 'connect_key')
-        secret_key = config.get('XenBot', 'secret_key')
+        connect_key = config.get('Bot', 'connect_key')
+        secret_key = config.get('Bot', 'secret_key')
+        mbid       = config.get('Bot', 'mbid')
 
-        self.target  = 'XEN'
-        self.payment = 'KRW'
-        self.dryrun = int(config.get('XenBot', 'dryrun'))
+        self.target  = TARGET
+        self.payment = PAYMENT
+        self.dryrun = int(config.get('Bot', 'dryrun'))
         self.tick_interval = float(config.get('Param', 'tick_interval'))
 
         if connect_key and secret_key and self.tick_interval and self.target and self.payment:
             logger.debug("configurations ok")
         else:
-            logger.debug("Please add info into configurations")
+            logger.debug("Please setup infomation into configurations file")
             raise ValueError
 
-        self.bot = Foblgate(connect_key, secret_key, self.target, self.payment)
+        self.bot = Foblgate(connect_key, secret_key, self.target, self.payment, mbid)
 
         self.result = {}
-
-        self.runtime = 0  # 실행 시간 측정
         self.qty  = 0
 
 
@@ -84,16 +100,15 @@ class Worker(QThread):
         self.tot_run = tot_run
         self.mode = mode
 
+    @logging_time
     def run(self):
 
         while True:
             if ps.run_flag:
                self.result = {}
                ret = self.bot.self_trading(ps)
-               # ret = self.bot.api_test(ps)
                if ret:
                     self.update_signal.emit(ret)
-               # return # one time do
 
             self.msleep(1000)
 
@@ -164,8 +179,8 @@ class MyWindow(QMainWindow, gui_form):
 
         # Load Config File
         config = ConfigParser()
-        config.read('trading_foblgate.conf')
-        dryrun = int(config.get('XenBot', 'dryrun'))
+        config.read(CONF_FILE)
+        dryrun = int(config.get('Bot', 'dryrun'))
         ps.dryrun = True if dryrun else False
         ps.fr_price = float(config.get('Param', 'fr_price'))
         ps.to_price = float(config.get('Param', 'to_price'))
@@ -182,16 +197,15 @@ class MyWindow(QMainWindow, gui_form):
 
         logger.debug('parameters setup %s' %ps)
 
-        self.target  = 'XEN'
-        self.payment = 'KRW'
+        self.target  = TARGET
+        self.payment = PAYMENT
 
-        self.title_Label.setText('XEN Bot')
+        self.title_Label.setText(self.target + '_Bot')
         self.MyDialgo()
 
     @pyqtSlot(str)
     def display_result(self, data):
-        logger.debug('===>display_result')
-
+        # 워커의 결과 출력
         try:
             self.textBrowser.append(data)
         except Exception as ex:
@@ -222,7 +236,7 @@ class MyWindow(QMainWindow, gui_form):
         self.sell_radioButton.clicked.connect(self.mode_cmd)
         self.buy_radioButton.clicked.connect(self.mode_cmd)
 
-        self.title_Label.setText("XEN Bot")
+        self.title_Label.setText(BOTNAME)
         self.delete_pushButton.clicked.connect(self.delete_logs_cmd)
 
         self.textBrowser.append('시스템 OK!')
@@ -285,10 +299,8 @@ class MyWindow(QMainWindow, gui_form):
 
         if self.sell_radioButton.isChecked():
             mode = 'sell'
-            print('sell')
         elif self.buy_radioButton.isChecked():
             mode = 'buy'
-            print('buy')
         elif self.random_radioButton.isChecked():
             mode = 'random'
         else:
@@ -316,7 +328,7 @@ class MyWindow(QMainWindow, gui_form):
                                      .format(self.worker.bot.asks_qty, self.worker.bot.asks_price
                                              ,self.worker.bot.bids_qty, self.worker.bot.bids_price))
         self.worker.bot.Balance()
-        self.balance_Label.setText("{:.0f} {}\n{:.0f} {}"
+        self.balance_Label.setText("Target {:.0f} {}\nPayment {:.0f} {}"
                     .format(self.worker.bot.targetBalance, self.target,
                             self.worker.bot.baseBalance, self.payment))
         return
@@ -351,16 +363,15 @@ class MyWindow(QMainWindow, gui_form):
         logger.debug('stop_cmd')
 
         ps.run_flag = 0
-        self.textBrowser.append( '정지합니다')
+        self.textBrowser.append( '진행 중 매매를 완료 후 정지합니다')
         return
 
     def mode_cmd(self):
+        # 모드 변경 명령
         if self.sell_radioButton.isChecked():
             mode = 'sell'
-            print('sell')
         elif self.buy_radioButton.isChecked():
             mode = 'buy'
-            print('buy')
         elif self.random_radioButton.isChecked():
             mode = 'random'
         else:
@@ -370,14 +381,6 @@ class MyWindow(QMainWindow, gui_form):
 
         ps.mode = mode
         return
-
-    def autoinput_cmd(self):
-        val = self.worker.seek_midprice()
-        if val == "Wait":
-            self.price_lineEdit.setText("{}".format(val))
-            self.textBrowser.append("Please wait. No spread")
-        else:
-            self.price_lineEdit.setText("{}" .format(val))
 
     def delete_logs_cmd(self):
         self.textBrowser.clear()
