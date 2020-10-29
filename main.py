@@ -20,8 +20,7 @@ TARGET  = 'XEN'
 PAYMENT = 'KRW'
 BOTNAME = TARGET + '_Bot'
 GUI_FILE = 'zenBot.ui'
-CONF_FILE = 'trading_duru.conf'
-# CONF_FILE = 'trading_foblgate.conf'
+CONF_FILE = 'trading_foblgate.conf'
 
 gui_form = uic.loadUiType(GUI_FILE)[0]
 
