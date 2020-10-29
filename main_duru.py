@@ -82,6 +82,8 @@ class Worker(QThread):
         self.tick_interval = float(config.get('Param', 'tick_interval'))
 
         if connect_key and secret_key and self.tick_interval and self.target and self.payment:
+            if connect_key == 'please_key_in':
+                raise ValueError
             logger.debug("configurations ok")
         else:
             logger.debug("Please setup infomation into configurations file")
