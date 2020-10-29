@@ -39,17 +39,17 @@ def get_logger():
 
     ch = logging.StreamHandler()
 
-    fh = logging.FileHandler('user.log', mode='a', encoding=None, delay=False)
-    fh.setLevel(logging.DEBUG)
+    # fh = logging.FileHandler('user.log', mode='a', encoding=None, delay=False)
+    # fh.setLevel(logging.DEBUG)
     # create formatter
     formatter = logging.Formatter("%(asctime)s %(filename)s %(lineno)s %(message)s")
-    formatter_fh = logging.Formatter("%(asctime)s %(filename)s %(lineno)s %(message)s")
+    # formatter_fh = logging.Formatter("%(asctime)s %(filename)s %(lineno)s %(message)s")
     # add formatter to ch
     ch.setFormatter(formatter)
-    fh.setFormatter(formatter_fh)
+    # fh.setFormatter(formatter_fh)
 
     logger.addHandler(ch)
-    logger.addHandler(fh)
+    # logger.addHandler(fh)
     return logger
 
 logger = get_logger()
