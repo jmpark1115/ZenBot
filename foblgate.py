@@ -21,11 +21,11 @@ from decimal import getcontext
 
 class Common(object):
 
-    def __init__(self, api_key, api_secret, target, payment):
+    def __init__(self, api_key, api_secret, target, payment, mbid=None):
         self.connect_key = api_key
         self.secret_key = api_secret
-        self.target = target
-        self.payment = payment
+        self.target = target.upper()
+        self.payment = payment.upper()
         self.targetBalance = 0
         self.baseBalance = 0
         self.bids_qty = 0
@@ -75,7 +75,6 @@ class Common(object):
         while True:
             sum = float(D(bid) + D(i) * D(tick_interval))
             if bid < sum < ask:
-                # result = math.floor(sum * tick_floor) / tick_floor
                 result = float(D(math.floor(D(sum) * D(tick_floor))) / D(tick_floor))
                 if result != bid:
                     sp.append(result)
@@ -148,13 +147,7 @@ class Common(object):
 
         return TradeSize, price
 
-    def job_function(self):
-        print("ticker", "| [time] "
-              , str(time.localtime().tm_hour) + ":"
-              + str(time.localtime().tm_min) + ":"
-              + str(time.localtime().tm_sec))
 
-    # def order_update(self, order_id, tran):
     def order_update(self, order_id, price, qty, side):
 
         # first try update
@@ -165,11 +158,7 @@ class Common(object):
         try:
             status, units_traded, avg_price, fee = self.review_order(order_id, qty, side)
             if units_traded != qty:
-                # tran.mark = True
-                self.Cancel(order_id, price, side)
-            # tran.avg_price   = avg_price
-            # tran.fee         = fee
-            # tran.save()
+                self.Cancel(order_id, price, qty, side)
         except Exception as ex:
             logger.debug('order_update exception %s' %ex)
 
@@ -240,10 +229,10 @@ class Common(object):
                                             self.bids_qty, self.bids_price, bot_conf)
 
         if qty <= 0 or price <= 0:
+            logger.debug('This is not trading situation {} {}' .format(self.nickname, self.symbol))
             text = 'This is not trading situation. {} {}\n'.format(self.nickname, self.symbol)
             msg += text
-            logger.debug('This is not trading situation {} {}' .format(self.nickname, self.symbol))
-            return
+            return msg
 
         if bot_conf.mode == 'random':
             if random.randint(0, 1) == 0:
@@ -264,8 +253,10 @@ class Common(object):
                 try:
                     status, order_id, content = self.Order(price, qty, 'SELL')
                     if status is not 'OK' or order_id == 0 or order_id == '' :
-                        logger.debug('fail to sell %s' % content)
-                        return
+                        text = 'fail to sell %s\n' % content
+                        msg += text
+                        logger.debug(text)
+                        return msg
                 except Exception as ex:
                     logger.error('fail to order')
                     return
@@ -278,51 +269,40 @@ class Common(object):
                 logger.debug(text)
                 args = ''
 
-                try:
-                    pass
-                    # args = (bot_conf.user.username, bot_conf.name, bot_conf.exchanger, 'sell',
-                    #         units_traded, qty, avg_price, price, fee, bot_conf.mode, status, self.targetBalance,
-                    #         self.baseBalance, order_id, 1, False, self.bids_price, self.asks_price)
-                    # first = self.DB_WRITE(args)
-                    first_price  = price
-                    first_qty    = qty
-                    first_side = 'SELL'
-                except Exception as ex:
-                    logger.error("db exception %s / %s" %(ex, args))
-                    return
+                first_price  = price
+                first_qty    = qty
+                first_side = 'SELL'
+
                 if status == "SKIP":  # filled or cancelled
-                    # first.mark = True
-                    # first.save()
-                    return
+                    return msg
+
                 elif status == "NG":  # partially filled
                     qty -= units_traded
                     if bot_conf.ex_min_qty > qty:
-                        # first.mark = True
-                        # first.save()
-                        text = 'qty {} is lower than min_qty {}'.format(qty, bot_conf.ex_min_qty)
+                        text = 'qty {} is lower than min_qty {}\n'.format(qty, bot_conf.ex_min_qty)
                         msg+= text
                         logger.debug(text)
                         self.Cancel(order_id, price, 'SELL')
-                        return
+                        return msg
                     else:
                         prev_order_id = order_id
-                else:  # GO, unfilled
+                elif status == 'GO':  # GO, unfilled
                     prev_order_id = order_id
+                else: #False
+                    self.bot.Cancel(order_id, price, 'SELL')
+                    return
                 #
                 try:
                     status, order_id, content = self.Order(price, qty, 'BUY')
                     if status is not 'OK' or order_id == 0 or order_id == '':
                         logger.debug('fail to buy %s' % content)
-                        # first.mark = True
-                        # first.save()
+                        msg += 'fail to buy %s\n' % content
                         self.Cancel(prev_order_id, first_price, first_side)
-                        return
+                        return msg
                 except Exception as ex:
                     logger.error('fail to order %s' %ex)
-                    # first.mark = True
-                    # first.save()
                     self.Cancel(prev_order_id, first_price, first_side)
-                    return
+                    return msg
 
                 time.sleep(1)
                 status, units_traded, avg_price, fee = self.review_order(order_id, qty, 'BUY')
@@ -330,39 +310,24 @@ class Common(object):
                                                                                self.symbol, order_id)
                 msg += text
                 logger.debug(text)
-                args = ''
-
-                try:
-                    pass
-                    # args = (bot_conf.user.username, bot_conf.name, bot_conf.exchanger, 'buy',
-                    #     units_traded, qty, avg_price, price, fee, bot_conf.mode, status, self.targetBalance,
-                    #     self.baseBalance, order_id, 2, False, self.bids_price, self.asks_price)
-                    # second = self.DB_WRITE(args)
-                except Exception as ex:
-                    logger.error("db exception %s / %s" %(ex, args))
-                    return
 
                 if status == "SKIP":  # filled, normal process
                     self.order_update(prev_order_id, first_price, first_qty, first_side)
                     self.save_mid_price(price, bot_conf)
                     pass
                 elif status == "NG":  # partially filled
-                    # second.mark = True
-                    # second.save()
                     self.order_update(prev_order_id, first_price, first_qty, first_side)
                     qty -= units_traded
                     logger.debug('partially filled, cancel pending order {}'.format(qty))
                     self.Cancel(order_id, price, 'BUY')
                     self.save_mid_price(price, bot_conf)
-                    return
-                else: # GO
-                    logger.debug('unfilled, cancel pending order')
-                    # second.mark = True
-                    # second.save()
+                    return msg
+                else: # GO or False
+                    logger.debug('unfilled, cancel pending order or resp error(False)')
                     self.order_update(prev_order_id, first_price, first_qty, first_side)
                     self.Cancel(order_id, price, 'BUY')
                     self.save_mid_price(price, bot_conf)
-                    return
+                    return msg
             else:
                 logger.debug('skip sell2buy in drymode')
 
@@ -373,101 +338,78 @@ class Common(object):
                     status, order_id, content = self.Order(price, qty, 'BUY')
                     if status is not 'OK' or order_id == 0 or order_id == '' :
                         logger.debug('fail to buy %s' % content)
-                        return
+                        msg += 'fail to buy %s\n' % content
+                        return msg
                 except Exception as ex:
                     logger.error('fail to order')
-                    return
+                    return msg
 
-                time.sleep(0.1)
+                time.sleep(0.01)
                 #
                 status, units_traded, avg_price, fee = self.review_order(order_id, qty, 'BUY')
                 text = 'BUY status : {} units_traded : {}/{} at {} with {}\n'.format(status, units_traded, qty, self.nickname, self.symbol, order_id)
                 msg += text
                 logger.debug(text)
-                try:
-                    pass
-                    # args = (bot_conf.user.username, bot_conf.name, bot_conf.exchanger, 'buy',
-                    #         units_traded, qty, avg_price, price, fee, bot_conf.mode, status, self.targetBalance,
-                    #         self.baseBalance, order_id, 1, False, self.bids_price, self.asks_price)
-                    # first = self.DB_WRITE(args)
-                    first_price  = price
-                    first_qty    = qty
-                    first_side = 'BUY'
-                except Exception as ex:
-                    logger.error("db exception %s / %s" %(ex, args))
-                    return
+
+                first_price  = price
+                first_qty    = qty
+                first_side = 'BUY'
 
                 if status == "SKIP":  # filled or cancelled
-                    # first.mark = True
-                    # first.save()
-                    return
+                    return msg
                 elif status == "NG":  # partially filled
                     qty -= units_traded
                     if bot_conf.ex_min_qty > qty:
-                        # first.mark = True
-                        # first.save()
                         logger.debug('qty {} is lower than min_qty {}'.format(qty, bot_conf.ex_min_qty))
+                        msg += 'qty {} is lower than min_qty {}\n'.format(qty, bot_conf.ex_min_qty)
                         self.Cancel(order_id, price, 'BUY')
-                        return
+                        return msg
                     else:
                         prev_order_id = order_id
-                else:  # GO, unfilled
+                elif status == 'GO': # GO, unfilled
                     prev_order_id = order_id
                     pass
+                else:
+                    self.bot.Cancel(order_id, price, 'BUY')
+                    return
                 #
                 try:
                     status, order_id, content = self.Order(price, qty, 'SELL')
                     if status is not 'OK' or order_id == 0 or order_id == '' :
                         logger.debug('fail to sell %s' % content)
-                        # first.mark = True
-                        # first.save()
+                        msg += 'fail to sell %s\n' % content
                         self.Cancel(prev_order_id, first_price , first_side)
-                        return
+                        return msg
                 except Exception as ex:
                     logger.error('fail to order %s' % content)
-                    # first.mark = True
-                    # first.save()
+                    msg += 'fail to order %s\n' % content
                     self.Cancel(prev_order_id, first_price , first_side)
-                    return
+                    return msg
 
-                time.sleep(1)
+                time.sleep(0.01)
                 status, units_traded, avg_price, fee = self.review_order(order_id, qty, 'SELL')
                 text = 'SEL status : {} units_traded : {}/{} at {} {} with {}\n'.format(status, units_traded, qty, self.nickname,
                                                                                self.symbol, order_id)
                 msg += text
                 logger.debug(text)
 
-                try:
-                    pass
-                    # args = (bot_conf.user.username, bot_conf.name, bot_conf.exchanger, 'sell',
-                    #         units_traded, qty, avg_price, price, fee, bot_conf.mode, status, self.targetBalance,
-                    #         self.baseBalance, order_id, 2, False, self.bids_price, self.asks_price)
-                    # second = self.DB_WRITE(args)
-                except Exception as ex:
-                    logger.error("db exception %s / %s" %(ex, args))
-                    return
-
                 if status == "SKIP":  # filled
                     self.order_update(prev_order_id, first_price, first_qty, first_side)
                     self.save_mid_price(price, bot_conf)
                     pass
                 elif status == "NG":  # partially filled
-                    # second.mark = True
-                    # second.save()
                     self.order_update(prev_order_id, first_price, first_qty, first_side)
                     qty -= units_traded
                     logger.debug('partially filled, cancel pending order {}'.format(qty))
-                    self.Cancel(order_id, first_price, first_side)
+                    self.Cancel(order_id, first_price, 'SELL')
                     self.save_mid_price(price, bot_conf)
-                    return
+                    return msg
                 else: # GO
                     logger.debug('unfilled, cancel pending order')
-                    # second.mark = True
-                    # second.save()
                     self.order_update(prev_order_id, first_price, first_qty, first_side)
-                    self.Cancel(order_id, first_price, first_side)
+                    self.Cancel(order_id, first_price, 'SELL')
                     self.save_mid_price(price, bot_conf)
-                    return
+                    return msg
         else:
             logger.debug('Invalid mode')
 
@@ -475,17 +417,16 @@ class Common(object):
         # self.Balance()
         return msg
 
-    def DB_WRITE(self, args):
-        return 'OK'
 
 class Foblgate(Common):
 
-    def __init__(self, api_key, api_secret, target, payment):
-        super().__init__(api_key, api_secret, target, payment)
+    def __init__(self, api_key, api_secret, target, payment, mbid=None):
+        super().__init__(api_key, api_secret, target, payment, mbid=None)
 
         self.id = id
-        self.mbid = 'hge4014@naver.com'
+        # self.mbid = 'hge4014@naver.com'
         # self.mbid = 'gkdnakcl@gmail.com'
+        self.mbid = mbid
         self.mid_price = 0 # previous mid_price
 
     def http_request(self, method, path, params=None, headers=None, auth=None):
@@ -807,42 +748,48 @@ class Foblgate(Common):
         return res
 
     def review_order(self, order_id, _qty, side):
+        '''
+        order_info() get closed orders.
+        if 'ordNo' is not found, the order_id means pending status.
+        '''
         units_traded = 0
         resp = None
         find = False
 
         try:
-            side = 'ask' if side == 'SELL' or side == 'ask' else 'bid'
-            resp = self.Order_info(side)
-            if 'status' in resp and resp['status'] == '0':
-                if 'data' in resp and resp['data'] :
-                    if 'list' in resp['data'] and resp['data']['list']:
-                        orders = resp['data']['list']
-                        if len(orders):
-                            orders = sorted(orders, key=itemgetter('ordDt'), reverse=True)
-                            for o in orders:
-                                if str(o['ordNo']) == order_id:  # find it !
-                                    find = True
-                                    units_traded += float(o['signAmount'])
-                                    avg_price = float(o['signPrice'])
-                                    fee = float(o['fee'])
+            for cnt in range(3):
+                side = 'ask' if side == 'SELL' or side == 'ask' else 'bid'
+                resp = self.Order_info(side)
+                if 'status' in resp and resp['status'] == '0':
+                    if 'data' in resp and resp['data'] :
+                        if 'list' in resp['data'] and resp['data']['list']:
+                            orders = resp['data']['list']
+                            if len(orders):
+                                orders = sorted(orders, key=itemgetter('ordDt'), reverse=True)
+                                for o in orders:
+                                    if str(o['ordNo']) == order_id:  # find it !
+                                        find = True
+                                        units_traded += float(o['signAmount'])
+                                        avg_price = float(o['signPrice'])
+                                        fee = float(o['fee'])
+                                        break
 
-                            if find:
-                                if units_traded == 0:   # unfilled
-                                    return "GO", units_traded, avg_price, fee
-                                elif units_traded < _qty : #partially filled
-                                    print("units_traded %.4f" % units_traded)
-                                    return "NG", units_traded, avg_price, fee
-                                else:  # filled or canceled
-                                    return "SKIP", units_traded, avg_price, fee
+                                if find:
+                                    if units_traded == 0:   # unfilled
+                                        return "GO", units_traded, avg_price, fee
+                                    elif units_traded < _qty : #partially filled
+                                        print("units_traded %.4f" % units_traded)
+                                        return "NG", units_traded, avg_price, fee
+                                    else:  # filled or canceled
+                                        return "SKIP", units_traded, avg_price, fee
 
-                            if not find:
-                                logger.debug("it must be pending order")
-                                return "GO", 0, 0, 0
+                                if not find:
+                                    logger.debug("it must be pending order_%s" %self.nickname)
+                                    return "GO", 0, 0, 0
 
-            logger.debug("response error %s" % resp)
-            return "SKIP", 0, 0, 0
+                logger.debug("response error %d_%s_%s" % (cnt, self.nickname, resp))
 
         except Exception as ex:
             logger.debug("Exception error in review order {}-{}" .format(resp, ex))
-            return "SKIP", 0, 0, 0
+
+        return False, 0, 0, 0
