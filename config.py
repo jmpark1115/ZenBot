@@ -18,16 +18,4 @@ class Params(object):
         self.tick_interval = 0
         self.run_flag = 0
 
-    '''
-    # https://dojang.io/mod/page/view.php?id=2476
-    @property
-    def fr_qty(self):
-        return self.fr_qty
-
-    @fr_qty.setter
-    def fr_qty(self, value):
-        self.fr_qty = value
-    '''
-
-
 ps = Params()
